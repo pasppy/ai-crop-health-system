@@ -1,42 +1,62 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock, ChevronRight, ArrowRight } from 'lucide-react';
+import { getStoredDiagnoses } from '../../services/diagnosticStorage';
 
-const RECENT_ITEMS = [
-  {
-    id: 'rec_1',
-    name: 'Bacterial Blight',
-    date: 'Sep 28, 2026 • 10:24 AM',
-    severity: 'Severe',
-    severityClass: 'bg-rose-100 text-rose-700 border-rose-200',
-    image: '/images/bacterial_blight.jpg',
-  },
-  {
-    id: 'rec_2',
-    name: 'Blast',
-    date: 'Sep 26, 2026 • 05:18 PM',
-    severity: 'Moderate',
-    severityClass: 'bg-amber-100 text-amber-700 border-amber-200',
-    image: '/images/blast.jpg',
-  },
-  {
-    id: 'rec_3',
-    name: 'Brown Spot',
-    date: 'Sep 24, 2026 • 11:02 AM',
-    severity: 'Mild',
-    severityClass: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    image: '/images/brown_spot.jpg',
-  },
-  {
-    id: 'rec_4',
-    name: 'Tungro',
-    date: 'Sep 20, 2026 • 09:30 AM',
-    severity: 'Moderate',
-    severityClass: 'bg-amber-100 text-amber-700 border-amber-200',
-    image: '/images/tungro.jpg',
-  },
-];
+function getSeverityBadge(severity) {
+  const sev = (severity || '').toLowerCase();
+  if (sev.includes('severe') || sev.includes('high')) {
+    return 'bg-rose-100 text-rose-700 border-rose-200';
+  }
+  if (sev.includes('mod')) {
+    return 'bg-amber-100 text-amber-700 border-amber-200';
+  }
+  if (sev.includes('mild')) {
+    return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+  }
+  return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+}
 
-export default function RecentDiagnosesRow({ onSelectRecent, onViewHistory }) {
+function formatDate(isoStr) {
+  if (!isoStr) return 'Recent';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' • ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return isoStr;
+  }
+}
+
+export default function RecentDiagnosesRow({ onSelectRecent, onViewHistory, items: propItems }) {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    if (propItems && propItems.length > 0) {
+      setItems(propItems.slice(0, 4));
+    } else {
+      const stored = getStoredDiagnoses();
+      setItems(stored.slice(0, 4));
+    }
+  }, [propItems]);
+
+  if (!items || items.length === 0) {
+    return (
+      <div className="space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Clock className="w-5 h-5 text-slate-700" />
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              Recent Diagnoses
+            </h3>
+          </div>
+        </div>
+        <div className="p-6 rounded-2xl bg-white border border-slate-200 text-center text-xs text-slate-500">
+          No diagnostic scans recorded yet. Upload a leaf image to run your first diagnosis!
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3.5">
       
@@ -58,9 +78,9 @@ export default function RecentDiagnosesRow({ onSelectRecent, onViewHistory }) {
         </button>
       </div>
 
-      {/* 4 Cards Grid */}
+      {/* Dynamic Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {RECENT_ITEMS.map((item) => (
+        {items.map((item) => (
           <div
             key={item.id}
             onClick={() => onSelectRecent(item)}
@@ -72,6 +92,7 @@ export default function RecentDiagnosesRow({ onSelectRecent, onViewHistory }) {
                   src={item.image}
                   alt={item.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  onError={(e) => { e.target.src = '/images/leaf_dropzone.jpg'; }}
                 />
               </div>
               <div className="min-w-0">
@@ -79,14 +100,14 @@ export default function RecentDiagnosesRow({ onSelectRecent, onViewHistory }) {
                   {item.name}
                 </h4>
                 <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                  {item.date}
+                  {formatDate(item.date)}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
-              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${item.severityClass}`}>
-                {item.severity}
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${getSeverityBadge(item.severity)}`}>
+                {item.severity || 'Diagnosed'}
               </span>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
             </div>

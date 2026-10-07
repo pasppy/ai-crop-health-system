@@ -15,7 +15,9 @@ import SettingsView from './components/settings/SettingsView';
 import TreatmentGuideView from './components/disease/TreatmentGuideView';
 import FieldManagementView from './components/field/FieldManagementView';
 import NotificationDrawer from './components/common/NotificationDrawer';
+import HistoryView from './components/history/HistoryView';
 import { checkBackendHealth, predictLeafImage } from './services/api';
+import { saveDiagnosisRecord } from './services/diagnosticStorage';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -81,6 +83,20 @@ export default function App() {
     try {
       const result = await predictLeafImage(imgData.file, imgData.presetLabel);
       setDiagnosisResult(result);
+
+      // Persist real successful scan to browser localStorage
+      if (!result.rejected && result.success) {
+        saveDiagnosisRecord({
+          predicted_class: result.predicted_class,
+          confidence: result.confidence,
+          severity: result.severity,
+          affected_leaf_area: result.affected_leaf_area,
+          pathogen: result.pathogen,
+          source: result.model_info || 'PyTorch EfficientNet-B0',
+          thumbnailUrl: imgData.previewUrl || result.image
+        });
+      }
+
       setTimeout(() => {
         resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
@@ -294,13 +310,10 @@ export default function App() {
 
           {/* TAB 8: History / Reports */}
           {(activeTab === 'history' || activeTab === 'reports') && (
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4 animate-fadeIn">
-              <h2 className="text-xl font-bold text-slate-900">Field Diagnostics History & Surveillance</h2>
-              <RecentDiagnosesRow
-                onSelectRecent={handleSelectRecent}
-                onViewHistory={() => {}}
-              />
-            </div>
+            <HistoryView
+              onSelectDiagnosis={handleSelectRecent}
+              onNewDiagnosis={() => setActiveTab('diagnose')}
+            />
           )}
 
         </main>

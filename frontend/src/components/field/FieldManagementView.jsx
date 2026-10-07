@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Map, 
   MapPin, 
@@ -12,65 +12,68 @@ import {
   Activity, 
   ChevronRight,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  X
 } from 'lucide-react';
+import { getStoredPlots, savePlot } from '../../services/diagnosticStorage';
 
 export default function FieldManagementView() {
-  const [selectedPlot, setSelectedPlot] = useState('p1');
+  const [fieldPlots, setFieldPlots] = useState([]);
+  const [selectedPlot, setSelectedPlot] = useState('');
   const [mapLayer, setMapLayer] = useState('satellite');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newPlotName, setNewPlotName] = useState('');
+  const [newPlotArea, setNewPlotArea] = useState('1.5 Acres');
+  const [newPlotVariety, setNewPlotVariety] = useState('Swarna Sub-1');
+  const [newPlotSoil, setNewPlotSoil] = useState('Alluvial Loam');
 
-  const fieldPlots = [
-    {
-      id: 'p1',
-      name: 'North Plot A (Swarna Sub-1)',
-      area: '1.8 Acres',
-      soil: 'Alluvial Loam',
-      stage: 'Panicle Initiation (Day 62)',
-      healthStatus: 'Moderate Risk',
-      healthBadge: 'bg-amber-100 text-amber-800 border-amber-200',
-      activeInfection: 'Bacterial Blight (Trace: 4%)',
-      soilMoisture: '78% (Adequate)',
-      waterLevel: '3.5 cm',
-      lastSpray: 'Sep 26, 2026',
-      nextAction: 'Schedule foliar copper bactericide spray',
-      coordinates: '25.0108° N, 88.1411° E',
-      pinColor: 'bg-amber-500'
-    },
-    {
-      id: 'p2',
-      name: 'South Plot B (MTU 1010)',
-      area: '1.4 Acres',
-      soil: 'Clayey Alluvium',
-      stage: 'Active Tillering (Day 38)',
+  useEffect(() => {
+    const plots = getStoredPlots();
+    setFieldPlots(plots);
+    if (plots.length > 0) {
+      setSelectedPlot(plots[0].id);
+    }
+  }, []);
+
+  const handleRegisterPlot = (e) => {
+    e.preventDefault();
+    if (!newPlotName.trim()) return;
+
+    const newPlotObj = {
+      id: `plot-${Date.now()}`,
+      name: newPlotName.trim(),
+      area: newPlotArea.trim() || '1.0 Acre',
+      variety: newPlotVariety.trim(),
+      soil: newPlotSoil.trim(),
+      stage: 'Vegetative Seedling (Day 15)',
       healthStatus: 'Optimal Health',
       healthBadge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       activeInfection: 'None detected',
-      soilMoisture: '82% (Ideal)',
-      waterLevel: '4.0 cm',
-      lastSpray: 'Sep 18, 2026',
-      nextAction: 'Monitor water level during booting stage',
-      coordinates: '25.0095° N, 88.1425° E',
-      pinColor: 'bg-emerald-500'
-    },
-    {
-      id: 'p3',
-      name: 'East Plot C (Basmati Experimental)',
-      area: '1.0 Acre',
-      soil: 'Sandy Clay Loam',
-      stage: 'Vegetative Seedling (Day 24)',
-      healthStatus: 'High Alert',
-      healthBadge: 'bg-rose-100 text-rose-700 border-rose-200',
-      activeInfection: 'Blast Lesions (8% foliage)',
-      soilMoisture: '71% (Drying out)',
-      waterLevel: '1.5 cm (Low)',
+      soilMoisture: '80% (Adequate)',
+      waterLevel: '3.0 cm',
       lastSpray: 'Pending',
-      nextAction: 'Immediate Tricyclazole foliar application required',
-      coordinates: '25.0120° N, 88.1440° E',
-      pinColor: 'bg-rose-500'
-    }
-  ];
+      nextAction: 'Monitor basal fertilizer uptake and weed control',
+      coordinates: `25.01${Math.floor(Math.random() * 80 + 10)}° N, 88.14${Math.floor(Math.random() * 80 + 10)}° E`,
+      pinColor: 'bg-emerald-500'
+    };
 
-  const currentPlot = fieldPlots.find(p => p.id === selectedPlot) || fieldPlots[0];
+    const updated = savePlot(newPlotObj);
+    setFieldPlots(updated);
+    setSelectedPlot(newPlotObj.id);
+    setNewPlotName('');
+    setShowAddModal(false);
+  };
+
+  const currentPlot = fieldPlots.find(p => p.id === selectedPlot) || fieldPlots[0] || {
+    name: 'No plots registered',
+    area: '0 Acres',
+    waterLevel: '0 cm',
+    soilMoisture: 'N/A',
+    activeInfection: 'None',
+    lastSpray: 'N/A',
+    nextAction: 'Register a plot to begin field monitoring',
+    coordinates: '25.0108° N, 88.1411° E'
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -86,11 +89,14 @@ export default function FieldManagementView() {
             Field Plot Management
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Geospatial surveillance, irrigation metrics, and localized pathology tracking
+            Geospatial surveillance, irrigation metrics, and localized pathology tracking ({fieldPlots.length} Plots Monitored)
           </p>
         </div>
 
-        <button className="px-4 py-2.5 rounded-xl bg-[#193B2B] hover:bg-[#132E20] text-white text-xs font-bold shadow-md shadow-emerald-950/20 flex items-center space-x-2 transition-all self-start sm:self-auto cursor-pointer">
+        <button 
+          onClick={() => setShowAddModal(true)}
+          className="px-4 py-2.5 rounded-xl bg-[#193B2B] hover:bg-[#132E20] text-white text-xs font-bold shadow-md shadow-emerald-950/20 flex items-center space-x-2 transition-all self-start sm:self-auto cursor-pointer"
+        >
           <Plus className="w-4 h-4 text-[#4ADE80]" />
           <span>Register New Field Plot</span>
         </button>
@@ -271,6 +277,88 @@ export default function FieldManagementView() {
         </div>
 
       </div>
+
+      {/* Register New Plot Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Register New Field Plot</h3>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterPlot} className="space-y-4 pt-4 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Plot Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. West Plot D (IR-64)"
+                  value={newPlotName}
+                  onChange={(e) => setNewPlotName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#2E7D32]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Acreage</label>
+                  <input
+                    type="text"
+                    value={newPlotArea}
+                    onChange={(e) => setNewPlotArea(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#2E7D32]"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Paddy Cultivar</label>
+                  <input
+                    type="text"
+                    value={newPlotVariety}
+                    onChange={(e) => setNewPlotVariety(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#2E7D32]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Soil Type</label>
+                <select
+                  value={newPlotSoil}
+                  onChange={(e) => setNewPlotSoil(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-[#2E7D32]"
+                >
+                  <option value="Alluvial Loam">Alluvial Loam</option>
+                  <option value="Clayey Alluvium">Clayey Alluvium</option>
+                  <option value="Sandy Clay Loam">Sandy Clay Loam</option>
+                  <option value="Silty Clay">Silty Clay</option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-[#193B2B] hover:bg-[#132E20] text-white font-bold cursor-pointer"
+                >
+                  Save Plot
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
