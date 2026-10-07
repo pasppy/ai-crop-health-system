@@ -128,6 +128,10 @@ export default function DashboardView({ onNavigateTab, onSelectDiagnosis }) {
     return `All Recorded History`;
   };
 
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const reminderDateStr = tomorrow.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
   return (
     <div className="space-y-6 animate-fadeIn">
            {/* Dashboard Top Header */}
