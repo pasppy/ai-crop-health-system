@@ -283,7 +283,7 @@ export default function LeafUploader({
               <div>
                 <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#EBF5ED] text-[#2E7D32] text-[11px] font-bold">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Image Loaded & Verified</span>
+                  <span>Image Ready for Analysis</span>
                 </div>
                 <h4 className="text-base font-bold text-slate-900 mt-2 truncate">
                   {selectedImage.name}

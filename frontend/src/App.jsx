@@ -226,9 +226,11 @@ export default function App() {
                     onOpenReport={() => setShowReport(true)}
                   />
 
-                  <AgronomicTreatmentCard
-                    result={diagnosisResult}
-                  />
+                  {!diagnosisResult.rejected && diagnosisResult.success && (
+                    <AgronomicTreatmentCard
+                      result={diagnosisResult}
+                    />
+                  )}
                 </div>
               )}
 

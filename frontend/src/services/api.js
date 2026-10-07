@@ -16,7 +16,7 @@ export async function checkBackendHealth() {
 }
 
 export async function predictLeafImage(imageFile, sampleLabel = null) {
-  // If backend is available, try sending formData
+  // If backend is available, query live PyTorch API gateway
   try {
     const formData = new FormData();
     formData.append('file', imageFile);
@@ -31,63 +31,67 @@ export async function predictLeafImage(imageFile, sampleLabel = null) {
       const data = await res.json();
       return {
         ...data,
-        source: 'Live PyTorch Model (EfficientNet-B0)',
+        source: data.rejected ? 'Input Validation Gatekeeper' : 'Live PyTorch Model (EfficientNet-B0)',
+      };
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        rejected: true,
+        rejection_stage: errData.rejection_stage || 'api_error',
+        message: errData.message || `Server responded with status ${res.status}.`,
+        details: errData.details || {},
       };
     }
   } catch (err) {
-    console.warn('Backend unavailable, utilizing high-precision agronomic offline engine', err);
+    console.warn('Backend service offline or unreachable', err);
   }
 
-  // Standalone offline intelligent fallback
-  // If a sample preset was selected or detected
-  let primaryName = sampleLabel || "Bacterial Blight";
-  
-  // If not a sample, determine plausible diagnosis based on image characteristics
-  if (!sampleLabel && imageFile) {
-    const classes = Object.keys(RICE_DISEASES);
-    // Hash the file name & size for deterministic yet varied prediction
-    const hash = (imageFile.name.length * 37 + (imageFile.size % 997)) % classes.length;
-    primaryName = classes[hash];
+  // Educational Sample Presets (when user explicitly clicks a verified preset button)
+  if (sampleLabel && RICE_DISEASES[sampleLabel]) {
+    const primaryInfo = RICE_DISEASES[sampleLabel];
+    const isHealthy = sampleLabel === "Healthy";
+    const conf1 = isHealthy ? 97.4 : 94.8;
+    const otherClasses = Object.keys(RICE_DISEASES).filter(k => k !== sampleLabel);
+
+    return {
+      success: true,
+      rejected: false,
+      predicted_class: sampleLabel,
+      confidence: conf1,
+      severity: isHealthy ? "Healthy" : primaryInfo.severityDefault || "Moderate",
+      affected_leaf_area: isHealthy ? "0%" : "18.5%",
+      top_predictions: [
+        { rank: 1, class_name: sampleLabel, probability: conf1 / 100, percentage: conf1 },
+        { rank: 2, class_name: otherClasses[0], probability: 0.03, percentage: 3.0 },
+        { rank: 3, class_name: otherClasses[1], probability: 0.02, percentage: 2.0 },
+      ],
+      pathogen: primaryInfo.pathogen,
+      pathology_type: primaryInfo.type,
+      description: primaryInfo.description,
+      symptoms: primaryInfo.symptoms,
+      favorable_conditions: primaryInfo.favorableConditions,
+      chemical_treatment: primaryInfo.chemicalControl,
+      biological_treatment: primaryInfo.biologicalControl,
+      cultural_practices: primaryInfo.culturalPractices,
+      source: 'Verified Benchmark Sample Preset',
+      model_architecture: 'EfficientNet-B0 (17 Classes)'
+    };
   }
 
-  const primaryInfo = RICE_DISEASES[primaryName] || RICE_DISEASES["Bacterial Blight"];
-  
-  // Calculate simulated confidence
-  const conf1 = primaryName === "Healthy" ? 97.4 : 95.8;
-  const otherClasses = Object.keys(RICE_DISEASES).filter(k => k !== primaryName);
-  const alt1 = otherClasses[0];
-  const alt2 = otherClasses[1];
-  const conf2 = ((100 - conf1) * 0.65).toFixed(2);
-  const conf3 = ((100 - conf1) * 0.35).toFixed(2);
-
-  // Severity calculation
-  let affectedAreaPct = primaryName === "Healthy" ? 0 : Math.floor(Math.random() * 25) + 15;
-  let severityGrade = "Mild";
-  if (affectedAreaPct > 40) severityGrade = "Critical";
-  else if (affectedAreaPct > 25) severityGrade = "Severe";
-  else if (affectedAreaPct > 10) severityGrade = "Moderate";
-  else if (affectedAreaPct === 0) severityGrade = "Healthy";
-
+  // If backend is offline and no preset was selected, report offline status honestly
   return {
-    success: true,
-    predicted_class: primaryName,
-    confidence: conf1,
-    severity: severityGrade,
-    affected_leaf_area: `${affectedAreaPct}%`,
-    top_predictions: [
-      { class_name: primaryName, probability: conf1 / 100, percentage: conf1 },
-      { class_name: alt1, probability: parseFloat(conf2) / 100, percentage: parseFloat(conf2) },
-      { class_name: alt2, probability: parseFloat(conf3) / 100, percentage: parseFloat(conf3) }
+    success: false,
+    rejected: true,
+    rejection_stage: 'backend_offline',
+    error_title: 'AI Diagnostic Server Offline',
+    what_went_wrong: 'The browser cannot reach the Python CV backend server on port 8000. Live neural network inference requires the backend service to be running.',
+    actionable_steps: [
+      'Start the backend service in a terminal: .venv\\Scripts\\python backend/server.py',
+      'Verify the terminal shows: Uvicorn running on http://127.0.0.1:8000',
+      'Or click any of the verified sample presets below to test the diagnostic interface immediately.'
     ],
-    pathogen: primaryInfo.pathogen,
-    pathology_type: primaryInfo.type,
-    description: primaryInfo.description,
-    symptoms: primaryInfo.symptoms,
-    favorable_conditions: primaryInfo.favorableConditions,
-    chemical_treatment: primaryInfo.chemicalControl,
-    biological_treatment: primaryInfo.biologicalControl,
-    cultural_practices: primaryInfo.culturalPractices,
-    source: 'Agronomic Diagnostic Engine (Offline Mode)',
-    model_architecture: 'EfficientNet-B0 (17-Class Rice Pathology)'
+    message: 'Backend CV service is offline. Please start the backend service (python backend/server.py) for live leaf diagnosis, or click one of the verified sample presets below.',
+    details: {}
   };
 }

@@ -21,6 +21,8 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from utils.image_validator import run_full_validation_pipeline, calibrate_prediction
+
 # Locate project root and cv-service model
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 CV_MODEL_DIR = ROOT_DIR / "cv-service" / "models" / "rice-leaf-disease-efficientnet-b0"
@@ -549,27 +551,27 @@ def estimate_leaf_lesions(image: Image.Image, predicted_class: str) -> Dict[str,
 
     # Convert to RGB numpy array
     rgb = np.array(image.convert("RGB"))
-    # Simple color thresholding for necrotic brown/yellow regions
     r = rgb[:, :, 0].astype(float)
     g = rgb[:, :, 1].astype(float)
     b = rgb[:, :, 2].astype(float)
 
-    # Leaf mask: pixels that are likely leaf (not pure white/black background)
-    leaf_mask = (g > 30) & ((r + g + b) < 700) & ((r + g + b) > 60)
-    total_leaf_pixels = np.sum(leaf_mask)
+    # Leaf mask: pixels that exhibit plant vegetation chrominance
+    leaf_mask = (g > 35) & ((r + g + b) < 680) & ((r + g + b) > 55)
+    total_leaf_pixels = float(np.sum(leaf_mask))
 
-    if total_leaf_pixels < 100:
-        return {"affected_area": "18.5%", "severity": "Moderate"}
+    if total_leaf_pixels < 50:
+        return {"affected_area": "0%", "severity": "Healthy"}
 
-    # Lesion mask: high red relative to green or dark necrotic patches
-    lesion_mask = leaf_mask & (((r > g * 1.05) & (r > 60)) | ((r < 70) & (g < 70) & (b < 70)))
-    lesion_pixels = np.sum(lesion_mask)
+    # Lesion mask: necrotic brown, yellow chlorosis, or blast lesions on leaf
+    lesion_mask = leaf_mask & (((r > g * 1.05) & (r > 55)) | ((r < 75) & (g < 75) & (b < 75)))
+    lesion_pixels = float(np.sum(lesion_mask))
 
     pct = (lesion_pixels / total_leaf_pixels) * 100.0
-    # Bound to realistic range
-    pct = max(3.5, min(pct, 88.0))
+    pct = round(max(0.0, min(pct, 95.0)), 1)
 
-    if pct < 10:
+    if pct == 0:
+        grade = "Healthy"
+    elif pct < 10:
         grade = "Mild"
     elif pct < 25:
         grade = "Moderate"
@@ -578,7 +580,7 @@ def estimate_leaf_lesions(image: Image.Image, predicted_class: str) -> Dict[str,
     else:
         grade = "Critical"
 
-    return {"affected_area": f"{pct:.1f}%", "severity": grade}
+    return {"affected_area": f"{pct}%", "severity": grade}
 
 
 @app.get("/api/v1/health")
@@ -630,14 +632,33 @@ def get_benchmarks():
 async def predict(file: UploadFile = File(...)):
     global MODEL, TRANSFORM, LABEL_NAMES, DEVICE
 
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image.")
+    contents = await file.read()
+    if not contents or len(contents) == 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "rejected": True,
+                "rejection_stage": "empty_file",
+                "message": "Uploaded file is empty. Please upload a valid leaf image."
+            }
+        )
 
-    try:
-        contents = await file.read()
-        pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image format: {e}")
+    # 1. Multi-Stage Image Validation & OOD Gatekeeper
+    val_res = run_full_validation_pipeline(contents)
+    if not val_res["valid"]:
+        return {
+            "success": False,
+            "rejected": True,
+            "rejection_stage": val_res["stage_failed"],
+            "error_title": val_res.get("error_title", "Image Unsuitable for Diagnosis"),
+            "what_went_wrong": val_res.get("what_went_wrong", val_res["rejection_reason"]),
+            "actionable_steps": val_res.get("actionable_steps", []),
+            "message": val_res.get("what_went_wrong", val_res["rejection_reason"]),
+            "details": val_res.get("details", {})
+        }
+
+    pil_image = val_res["image"].convert("RGB")
 
     # If model is not loaded, try initializing
     if MODEL is None or TRANSFORM is None:
@@ -658,18 +679,34 @@ async def predict(file: UploadFile = File(...)):
     k = min(5, len(LABEL_NAMES))
     topk_prob, topk_indices = torch.topk(probabilities, k=k)
 
-    predicted_idx = int(topk_indices[0])
-    predicted_class = LABEL_NAMES[predicted_idx]
-    predicted_confidence = float(topk_prob[0]) * 100.0
-
     top_predictions = []
     for rank, (idx, prob) in enumerate(zip(topk_indices, topk_prob)):
         top_predictions.append({
             "rank": rank + 1,
             "class_name": LABEL_NAMES[int(idx)],
             "probability": float(prob),
-            "percentage": float(prob) * 100.0
+            "percentage": round(float(prob) * 100.0, 2)
         })
+
+    # 2. Prediction Calibration & Confidence Floor
+    calib = calibrate_prediction(top_predictions)
+    if not calib["accepted"]:
+        return {
+            "success": False,
+            "rejected": True,
+            "rejection_stage": "low_confidence",
+            "error_title": calib.get("error_title", "Inconclusive Diagnosis"),
+            "what_went_wrong": calib.get("what_went_wrong", calib["message"]),
+            "actionable_steps": calib.get("actionable_steps", []),
+            "message": calib.get("what_went_wrong", calib["message"]),
+            "confidence": calib.get("top_confidence"),
+            "top_predictions": top_predictions,
+            "details": calib
+        }
+
+    predicted_idx = int(topk_indices[0])
+    predicted_class = LABEL_NAMES[predicted_idx]
+    predicted_confidence = float(topk_prob[0]) * 100.0
 
     # Severity analysis
     lesion_stats = estimate_leaf_lesions(pil_image, predicted_class)
@@ -687,8 +724,11 @@ async def predict(file: UploadFile = File(...)):
 
     return {
         "success": True,
+        "rejected": False,
         "predicted_class": predicted_class,
         "confidence": round(predicted_confidence, 2),
+        "calibration_status": calib.get("status", "High Confidence"),
+        "calibration_message": calib.get("message", "Definitive diagnosis confirmed."),
         "severity": lesion_stats["severity"],
         "affected_leaf_area": lesion_stats["affected_area"],
         "top_predictions": top_predictions,
@@ -700,6 +740,7 @@ async def predict(file: UploadFile = File(...)):
         "chemical_treatment": disease_info.get("chemicalControl", []),
         "biological_treatment": disease_info.get("biologicalControl", []),
         "cultural_practices": disease_info.get("culturalPractices", []),
+        "validation_metadata": val_res.get("details", {}),
         "source": "Live PyTorch Model (EfficientNet-B0)",
         "model_architecture": "EfficientNet-B0 (17 Classes)"
     }

@@ -9,6 +9,166 @@ export default function DiagnosisResult({ result, imagePreview, onOpenReport }) 
 
   if (!result) return null;
 
+  if (result.rejected || !result.success) {
+    const stageThemes = {
+      botanical_domain: {
+        badge: "Foliage Verification Failed",
+        title: result.error_title || "Non-Plant / Non-Rice Image Detected",
+        iconBg: "bg-amber-100 text-amber-800 border-amber-200",
+        headerColor: "text-amber-900",
+      },
+      image_quality: {
+        badge: "Image Quality Failed",
+        title: result.error_title || "Photo Blurry or Poorly Exposed",
+        iconBg: "bg-orange-100 text-orange-800 border-orange-200",
+        headerColor: "text-orange-900",
+      },
+      file_integrity: {
+        badge: "Format Check Failed",
+        title: result.error_title || "Invalid File or Resolution",
+        iconBg: "bg-rose-100 text-rose-800 border-rose-200",
+        headerColor: "text-rose-900",
+      },
+      low_confidence: {
+        badge: "Clinical Confidence Floor",
+        title: result.error_title || "Inconclusive Pathology Diagnosis",
+        iconBg: "bg-purple-100 text-purple-800 border-purple-200",
+        headerColor: "text-purple-900",
+      },
+      backend_offline: {
+        badge: "Service Unreachable",
+        title: result.error_title || "Diagnostic AI Engine Offline",
+        iconBg: "bg-slate-100 text-slate-800 border-slate-200",
+        headerColor: "text-slate-900",
+      }
+    };
+
+    const theme = stageThemes[result.rejection_stage] || {
+      badge: "Input Validation Gatekeeper",
+      title: result.error_title || "Image Unsuitable for Diagnosis",
+      iconBg: "bg-amber-100 text-amber-800 border-amber-200",
+      headerColor: "text-slate-900",
+    };
+
+    const whatWentWrong = result.what_went_wrong || result.message || 
+      "The uploaded photograph could not be validated as a legitimate rice leaf image for pathology analysis.";
+
+    const defaultSteps = [
+      "Capture an actual paddy plant or rice leaf in your field.",
+      "Hold the camera 15–30 cm from the diseased leaf blade so it fills most of the frame.",
+      "Ensure steady focus in natural daylight without direct camera flash.",
+      "Or click any of the educational sample presets below to test the diagnostic system."
+    ];
+
+    const actionableSteps = (result.actionable_steps && result.actionable_steps.length > 0)
+      ? result.actionable_steps
+      : defaultSteps;
+
+    return (
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-7 shadow-sm relative overflow-hidden animate-fadeIn space-y-5">
+        
+        {/* Header Banner */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div className="flex items-center space-x-3">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border ${theme.iconBg}`}>
+              <AlertTriangle className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  Diagnosis Rejected
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  {theme.badge}
+                </span>
+              </div>
+              <h3 className={`text-lg sm:text-xl font-black mt-1 tracking-tight ${theme.headerColor}`}>
+                {theme.title}
+              </h3>
+            </div>
+          </div>
+
+          {result.details?.foliage_coverage_pct !== undefined && (
+            <div className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-right">
+              <span className="text-[10px] text-slate-400 block font-medium uppercase tracking-wider">Foliage Detected</span>
+              <span className="text-xs font-mono font-bold text-slate-700">
+                {result.details.foliage_coverage_pct}% <span className="text-slate-400 font-normal">(&ge;12% req.)</span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 2-Column or Stacked Explanation: What Went Wrong vs What User Should Do */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          
+          {/* Panel 1: What Went Wrong */}
+          <div className="lg:col-span-6 rounded-xl p-4 sm:p-5 bg-rose-50/50 border border-rose-200/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center space-x-2 text-rose-800 font-bold text-xs uppercase tracking-wider mb-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                <span>1. What Went Wrong</span>
+              </div>
+              <p className="text-sm text-slate-800 leading-relaxed font-medium">
+                {whatWentWrong}
+              </p>
+            </div>
+
+            {/* Diagnostic metrics readout if available */}
+            {result.details && Object.keys(result.details).length > 0 && (
+              <div className="mt-4 pt-3 border-t border-rose-200/60 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                {result.details.blur_score !== undefined && (
+                  <div className="bg-white/80 p-2 rounded-lg border border-rose-100">
+                    <span className="text-[10px] text-slate-400 block">Sharpness</span>
+                    <span className="font-mono font-bold text-slate-700">{result.details.blur_score}</span>
+                  </div>
+                )}
+                {result.details.brightness !== undefined && (
+                  <div className="bg-white/80 p-2 rounded-lg border border-rose-100">
+                    <span className="text-[10px] text-slate-400 block">Brightness</span>
+                    <span className="font-mono font-bold text-slate-700">{result.details.brightness}/255</span>
+                  </div>
+                )}
+                {result.confidence !== undefined && (
+                  <div className="bg-white/80 p-2 rounded-lg border border-rose-100">
+                    <span className="text-[10px] text-slate-400 block">Confidence</span>
+                    <span className="font-mono font-bold text-slate-700">{result.confidence}%</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Panel 2: What You Should Do (Actionable Next Steps) */}
+          <div className="lg:col-span-6 rounded-xl p-4 sm:p-5 bg-emerald-50/50 border border-emerald-200/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs uppercase tracking-wider mb-2.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                <span>2. What You Should Do (Next Steps)</span>
+              </div>
+              <ol className="space-y-2.5 text-xs text-slate-700">
+                {actionableSteps.map((step, idx) => (
+                  <li key={idx} className="flex items-start space-x-2.5">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+                      {idx + 1}
+                    </span>
+                    <span className="leading-snug font-medium text-slate-800 pt-0.5">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-xs text-emerald-800 font-semibold">
+              <span>Ready to try again?</span>
+              <span className="text-[11px] text-slate-500 font-normal">Select a new image above or choose a preset below</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    );
+  }
+
   const isHealthy = result.predicted_class === "Healthy";
   const confidence = result.confidence || 95.8;
 
